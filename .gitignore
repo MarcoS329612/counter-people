@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Model weights (downloaded by Ultralytics on first run)
+*.pt
+
+# Secrets
+.env
+
+# Live demo process id and log
+.demo/

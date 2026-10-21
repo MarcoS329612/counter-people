@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <title>Quick Wins con IA</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #181b22;
+      --line: #2a2f3a;
+      --text: #f2f4f8;
+      --muted: #8b93a7;
+      --ok: #3ddc84;
+      --near: #ffc145;
+      --full: #ff9f43;
+      --over: #ff5c5c;
+      --accent: #6c8cff;
+      --status: var(--ok);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+    body.near { --status: var(--near); }
+    body.full { --status: var(--full); }
+    body.over { --status: var(--over); }
+    main {
+      max-width: 560px; margin: 0 auto;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+               max(40px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    }
+    h1 { font-size: 22px; margin: 8px 0 4px; }
+    h2 { font-size: 17px; margin: 0 0 10px; }
+    .muted { color: var(--muted); }
+    .small { font-size: 13px; }
+    .card { background: var(--panel); border-radius: 16px; padding: 16px; margin-top: 14px; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    [hidden] { display: none !important; }
+    .source { text-align: center; margin-top: 28px; }
+    .source a { color: var(--muted); }
+
+    /* Choosing a team */
+    .roles { display: grid; gap: 12px; margin-top: 18px; }
+    .role {
+      display: flex; gap: 14px; align-items: center; text-align: left;
+      background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 16px;
+    }
+    .role:active { border-color: var(--accent); }
+    .role .icon { font-size: 32px; }
+    .role strong { display: block; font-size: 18px; }
+
+    /* Header */
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .top > div { min-width: 0; }
+    .toast {
+      position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 5;
+      background: var(--ok); color: #0f1115; border: 0; border-radius: 999px; padding: 10px 18px;
+      font-weight: 700; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); white-space: nowrap;
+    }
+    .toast[hidden] { display: none; }
+    .chip {
+      background: var(--line); border: 0; border-radius: 999px; padding: 6px 12px; font-size: 14px; white-space: nowrap;
+    }
+
+    /* Count */
+    .count-card { display: flex; align-items: center; gap: 16px; }
+    @media (max-width: 360px) {
+      .count { font-size: 40px; }
+      .chip .extra { display: none; }
+      .count-info .small { display: none; }
+      .role { padding: 12px; }
+      .role .icon { font-size: 26px; }
+    }
+    .count { font-size: 48px; font-weight: 800; line-height: 1; color: var(--status); font-variant-numeric: tabular-nums; }
+    .count small { font-size: 20px; color: var(--muted); font-weight: 600; }
+    .count-info { flex: 1; }
+    .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+    .bar div { height: 100%; width: 0; background: var(--status); transition: width 300ms; }
+    .state { color: var(--status); font-weight: 600; }
+
+    /* Asking */
+    .quick { display: flex; flex-wrap: wrap; gap: 8px; }
+    .quick button {
+      background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; font-size: 14px; text-align: left;
+    }
+    .quick button:active { border-color: var(--accent); }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    input {
+      flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg);
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    .send { background: var(--accent); border: 0; border-radius: 12px; padding: 0 16px; font-weight: 600; color: #fff; }
+    button:disabled { opacity: 0.5; }
+    .answers { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .answer { border-left: 3px solid var(--accent); padding-left: 12px; }
+    .answer .q { color: var(--muted); font-size: 14px; }
+    .answer.error { border-color: var(--near); }
+    .thinking::after { content: "…"; animation: dots 1.2s steps(3) infinite; display: inline-block; width: 1em; overflow: hidden; vertical-align: bottom; }
+    @keyframes dots { from { width: 0; } to { width: 1em; } }
+
+    /* Decisions */
+    .feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+    .feed li { border-left: 3px solid var(--line); padding-left: 12px; }
+    .feed .event { border-color: var(--over); font-weight: 600; }
+    .feed .analysis { border-color: var(--accent); }
+    .feed .decision { border-color: var(--ok); }
+    .feed .new { animation: flash 2s ease; }
+    @keyframes flash { from { background: rgba(61, 220, 132, 0.18); } to { background: transparent; } }
+    .feed .meta { color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="choose" hidden>
+      <div class="muted small">Index Chihuahua · Comité de IT</div>
+      <h1>Quick Wins con IA</h1>
+      <p class="muted">Una cámara está viendo esta sala. Elige tu equipo: la IA te avisará lo que le toca hacer a tu equipo y podrás preguntarle qué ve.</p>
+      <div class="roles">
+        <button class="role" data-role="safety"><span class="icon">🦺</span><span><strong>Seguridad</strong><span class="muted">Aforo, salidas y riesgos</span></span></button>
+        <button class="role" data-role="operations"><span class="icon">⚙️</span><span><strong>Operaciones</strong><span class="muted">Que la sala funcione</span></span></button>
+        <button class="role" data-role="management"><span class="icon">📊</span><span><strong>Dirección</strong><span class="muted">Impacto y decisiones</span></span></button>
+      </div>
+      <p class="muted small">La imagen de la cámara no se muestra en los celulares ni se guarda. Solo se envía a la IA cuando alguien le pregunta algo.</p>
+    </section>
+
+    <section id="app" hidden>
+      <button class="toast" id="toast" hidden>Nueva decisión para tu equipo ↓</button>
+      <div class="top">
+        <div><div class="muted small">Quick Wins con IA</div><strong>Demo en vivo</strong></div>
+        <button class="chip" id="change-role" title="Cambiar de equipo"></button>
+      </div>
+
+      <div class="card count-card">
+        <div class="count"><span id="count">–</span><small> / <span id="capacity">–</span></small></div>
+        <div class="count-info">
+          <div class="state" id="state">Conectando…</div>
+          <div class="bar"><div id="bar"></div></div>
+          <div class="muted small">personas en la sala, contadas por YOLO</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Pregúntale a la IA qué ve</h2>
+        <div class="quick" id="quick"></div>
+        <form id="ask">
+          <input id="question" maxlength="300" placeholder="O escribe tu pregunta…" autocomplete="off" enterkeyhint="send">
+          <button class="send" id="send">Enviar</button>
+        </form>
+        <div class="answers" id="answers"></div>
+      </div>
+
+      <div class="card" id="feed-card">
+        <h2>Avisos para tu equipo</h2>
+        <ul class="feed" id="feed"><li class="muted small" id="feed-empty">Cuando pase algo en la sala, aquí te llega lo que le toca hacer a tu equipo.</li></ul>
+      </div>
+    </section>
+    <p class="muted small source">Software libre (AGPL-3.0) · <a href="https://github.com/MarcoS329612/counter-people">código fuente</a></p>
+  </main>
+  <script>
+    const ROLES = {
+      safety: { name: "Seguridad", icon: "🦺" },
+      operations: { name: "Operaciones", icon: "⚙️" },
+      management: { name: "Dirección", icon: "📊" },
+    };
+    const STATES = { ok: "Dentro del aforo", near: "Casi lleno", full: "Aforo lleno", over: "Aforo rebasado" };
+    const QUICK = {
+      safety: ["¿Alguien trae equipo de seguridad?", "¿Hay alguna salida bloqueada?", "¿Hay personas de pie?"],
+      operations: ["¿Qué están haciendo las personas?", "¿Quedan lugares libres?", "¿Alguien está usando el celular?"],
+      management: ["¿Qué están haciendo las personas?", "¿La gente se ve interesada?", "¿Alguien trae equipo de seguridad?"],
+    };
+    const $ = (id) => document.getElementById(id);
+
+    const store = {
+      get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+      set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+    };
+    let clientId = store.get("client-id");
+    if (!clientId) {
+      clientId = Math.random().toString(36).slice(2, 12);
+      store.set("client-id", clientId);
+    }
+    const fromLink = new URLSearchParams(location.search).get("rol");  // e.g. /m?rol=safety
+    if (ROLES[fromLink]) store.set("role", fromLink);
+    let role = ROLES[fromLink] ? fromLink : ROLES[store.get("role")] ? store.get("role") : null;
+    let lastFeedId = 0;
+    let ai = "La IA";
+    let asking = false;
+    let hideToast;
+
+    function show() {
+      $("choose").hidden = !!role;
+      $("app").hidden = !role;
+      if (!role) return;
+      $("change-role").replaceChildren(
+        `${ROLES[role].icon} ${ROLES[role].name}`,
+        Object.assign(document.createElement("span"), { className: "extra", textContent: " · cambiar" }),
+      );
+      $("quick").replaceChildren(...QUICK[role].map((text) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = text;
+        button.onclick = () => ask(text);
+        return button;
+      }));
+      $("feed").replaceChildren(Object.assign(document.createElement("li"), {
+        id: "feed-empty", className: "muted small",
+        textContent: "Cuando pase algo en la sala, aquí te llega lo que le toca hacer a tu equipo.",
+      }));
+      lastFeedId = 0;
+      refreshFeed(true);
+    }
+
+    document.querySelectorAll(".role").forEach((button) => {
+      button.onclick = () => { role = button.dataset.role; store.set("role", role); show(); };
+    });
+    $("change-role").onclick = () => { role = null; show(); window.scrollTo(0, 0); };
+
+    async function refreshCount() {
+      try {
+        const { count, capacity, status, ai: name } = await (await fetch("/api/occupancy")).json();
+        if (name) ai = name;
+        document.body.className = status;
+        $("count").textContent = count;
+        $("capacity").textContent = capacity;
+        $("state").textContent = STATES[status];
+        $("bar").style.width = Math.min(100, (100 * count) / capacity) + "%";
+      } catch {
+        $("state").textContent = "Sin conexión";
+      }
+    }
+
+    async function refreshFeed(firstLoad = false) {
+      if (!role) return;
+      try {
+        const items = await (await fetch(`/api/feed?role=${role}&after=${lastFeedId}`)).json();
+        const news = items.filter((item) => item.kind === "decision");
+        for (const item of items) {
+          $("feed-empty")?.remove();
+          const li = document.createElement("li");
+          li.className = item.kind + (firstLoad ? "" : " new");
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = {
+            event: `${item.time} · En la sala`,
+            analysis: `${item.time} · ${ai} Vision, en la pantalla`,
+            decision: `${item.time} · Para ${ROLES[role].name}`,
+          }[item.kind];
+          const text = document.createElement("div");
+          text.textContent = item.text;
+          li.append(meta, text);
+          $("feed").prepend(li);
+          lastFeedId = item.id;
+        }
+        while ($("feed").children.length > 8) $("feed").lastElementChild.remove();
+        if (news.length && !firstLoad) {
+          if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+          $("toast").hidden = false;
+          clearTimeout(hideToast);
+          hideToast = setTimeout(() => ($("toast").hidden = true), 8000);
+        }
+      } catch {}
+    }
+
+    async function ask(question) {
+      question = question.trim();
+      if (!question || asking) return;
+      asking = true;
+      $("send").disabled = true;
+      document.querySelectorAll("#quick button").forEach((b) => (b.disabled = true));
+
+      const entry = document.createElement("div");
+      entry.className = "answer";
+      const q = document.createElement("div");
+      q.className = "q";
+      q.textContent = question;
+      const a = document.createElement("div");
+      a.className = "thinking";
+      a.textContent = `${ai} está mirando la sala`;
+      entry.append(q, a);
+      $("answers").prepend(entry);
+      while ($("answers").children.length > 5) $("answers").lastElementChild.remove();
+
+      try {
+        const response = await fetch("/api/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role, question, client_id: clientId }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "No se pudo preguntar.");
+        a.textContent = data.answer;
+      } catch (error) {
+        entry.classList.add("error");
+        a.textContent = error.message || "No hay conexión con el servidor.";
+      } finally {
+        a.classList.remove("thinking");
+        asking = false;
+        $("send").disabled = false;
+        document.querySelectorAll("#quick button").forEach((b) => (b.disabled = false));
+      }
+    }
+
+    $("ask").onsubmit = (event) => {
+      event.preventDefault();
+      ask($("question").value);
+      $("question").value = "";
+      $("question").blur();
+    };
+
+    $("toast").onclick = () => {
+      $("toast").hidden = true;
+      $("feed-card").scrollIntoView({ behavior: "smooth" });
+    };
+
+    refreshCount().then(show);  // first learn which AI is answering, so the list says its name
+    setInterval(refreshCount, 2000);
+    setInterval(refreshFeed, 2000);
+  </script>
+</body>
+</html>

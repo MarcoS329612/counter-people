@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aforo en vivo</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #181b22;
+      --line: #262a33;
+      --text: #f2f4f8;
+      --muted: #8b93a7;
+      --ok: #3ddc84;
+      --near: #ffc145;
+      --full: #ff9f43;
+      --over: #ff5c5c;
+      --accent: #6c8cff;
+      --status: var(--ok);
+    }
+    /* Everything is in rem, and 1rem follows the screen: ~19px at 1920x1080, ~31px at 3072x1728, ~77px at 8K.
+       So the page looks the same on a laptop, a projector or a huge TV, just bigger. */
+    html { font-size: max(12px, min(1vw, 1.78vh)); }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 1rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) max(20rem, 30vw);
+      grid-template-rows: minmax(0, 60fr) minmax(0, 40fr);
+      grid-template-areas: "video side" "feed side";
+      gap: 1.1rem;
+      padding: 1.1rem;
+      height: 100dvh;
+      overflow: hidden; /* a projector can't scroll: everything has to fit */
+    }
+    body.near { --status: var(--near); }
+    body.full { --status: var(--full); }
+    body.over { --status: var(--over); }
+    .video {
+      grid-area: video;
+      background: #000;
+      border-radius: 1rem;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      outline: 0.25rem solid transparent;
+      transition: outline-color 300ms;
+    }
+    body.over .video { outline-color: var(--over); }
+    .video img { width: 100%; height: 100%; object-fit: contain; }
+    .side { grid-area: side; display: flex; flex-direction: column; gap: 1.1rem; min-height: 0; }
+    .card { background: var(--panel); border-radius: 1rem; padding: 1.3rem 1.5rem; }
+    .label { color: var(--muted); font-size: 1.15rem; letter-spacing: 0.02em; }
+
+    .count-card { text-align: center; flex: none; }
+    .count-line { display: flex; align-items: baseline; justify-content: center; gap: 0.7rem; margin: 0.1rem 0 0.6rem; }
+    .count {
+      font-size: 8.5rem;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--status);
+      font-variant-numeric: tabular-nums;
+      transition: transform 150ms ease, color 300ms;
+    }
+    .count.bump { transform: scale(1.08); }
+    .capacity { font-size: 2.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .bar { height: 0.6rem; background: var(--line); border-radius: 0.3rem; overflow: hidden; }
+    .bar div { height: 100%; width: 0; background: var(--status); transition: width 300ms, background 300ms; }
+    .state { margin-top: 0.6rem; font-size: 1.6rem; font-weight: 600; color: var(--status); }
+    .details { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 0.7rem; color: var(--muted); font-size: 1rem; }
+    .details .dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--ok); margin-right: 0.4rem; }
+    .details .stopped .dot { background: var(--over); }
+    .controls { white-space: nowrap; }
+    .controls button {
+      background: var(--line); color: var(--text); border: 0; border-radius: 0.5rem;
+      width: 2rem; height: 2rem; font-size: 1.2rem; cursor: pointer;
+    }
+
+    .vision { display: flex; flex-direction: column; gap: 0.6rem; flex: none; }
+    .vision-head { display: flex; justify-content: space-between; align-items: center; gap: 0.7rem; }
+    .analyze {
+      background: var(--accent); color: #fff; border: 0; border-radius: 0.6rem; padding: 0.6rem 1rem;
+      font: inherit; font-size: 1.15rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .analyze:disabled { opacity: 0.6; cursor: wait; }
+    .description { font-size: 1.3rem; line-height: 1.4; max-height: 26vh; overflow-y: auto; }
+    .description.placeholder { color: var(--muted); font-size: 1.05rem; }
+    .description.thinking::after { content: "…"; animation: dots 1.2s steps(3) infinite; display: inline-block; width: 1em; overflow: hidden; vertical-align: bottom; }
+    @keyframes dots { from { width: 0; } to { width: 1em; } }
+
+    .join { display: flex; gap: 1.1rem; align-items: center; flex: none; cursor: zoom-in; }
+    .join { flex: 1; min-height: 0; overflow: hidden; flex-direction: column; justify-content: center; gap: 0.7rem; text-align: center; }
+    .join img { width: min(100%, 27vh); height: auto; border-radius: 0.5rem; background: #fff; flex: none; }
+    .join strong { display: block; font-size: 1.5rem; margin-bottom: 0.3rem; }
+    .join .url { color: var(--muted); font-size: 0.9rem; word-break: break-all; margin-top: 0.3rem; }
+    .join .hint { color: var(--accent); font-size: 0.9rem; margin-top: 0.4rem; }
+
+    .feed-card { grid-area: feed; min-height: 0; display: flex; flex-direction: column; }
+    .feed { list-style: none; margin: 0.6rem 0 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; }
+    .feed li { border-left: 0.25rem solid var(--line); padding: 0.15rem 0 0.15rem 0.9rem; font-size: 1.3rem; line-height: 1.4; }
+    .feed li.new { animation: flash 1.2s ease; }
+    @keyframes flash { from { background: rgba(255,255,255,0.08); } to { background: transparent; } }
+    .feed .meta { color: var(--muted); font-size: 0.95rem; margin-bottom: 0.15rem; }
+    .feed .event { border-color: var(--over); font-weight: 600; }
+    .feed .decision { border-color: var(--accent); }
+    .feed .question { border-color: var(--ok); }
+    .feed .error { border-color: var(--near); color: var(--muted); }
+    .feed .analysis { border-color: var(--accent); }
+    .feed .q { color: var(--muted); font-style: italic; }
+    .empty { color: var(--muted); font-size: 1rem; }
+
+    /* Big QR code over everything, for the moment the audience joins */
+    .qr-overlay {
+      position: fixed; inset: 0; z-index: 10;
+      background: rgba(15, 17, 21, 0.96);
+      display: grid; place-items: center; padding: 1.5rem;
+      cursor: zoom-out;
+    }
+    .qr-overlay[hidden] { display: none; }
+    .qr-big { display: flex; flex-direction: column; align-items: center; gap: 2.5vh; text-align: center; }
+    .qr-big h1 { margin: 0; font-size: 7vh; }
+    .qr-big img { width: min(65vh, 85vw); height: auto; border-radius: 1rem; background: #fff; }
+    .qr-big .big-url { font-size: 3.4vh; color: var(--muted); word-break: break-all; }
+    .qr-big .close { font-size: 1.6vh; color: var(--muted); }
+
+    /* Screens less wide than 16:9 (4:3 projectors like 1024x768): drop the smaller texts so it all fits */
+    @media (max-aspect-ratio: 3/2) and (min-width: 901px) {
+      .join .hint { display: none; }
+      .count { font-size: 6.5rem; }
+    }
+
+    /* Narrow windows (a tablet, half a laptop screen): one column that scrolls */
+    @media (max-width: 900px) {
+      html { font-size: 15px; }
+      body {
+        grid-template-columns: 1fr; grid-template-rows: none; grid-template-areas: "video" "side" "feed";
+        height: auto; min-height: 100dvh; overflow: auto;
+      }
+      .video { aspect-ratio: 16 / 9; }
+      .join img { width: 11rem; }
+      .feed-card { max-height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="video"><img src="/video" alt="La sala en vivo, con un recuadro por persona"></div>
+  <div class="side">
+    <div class="card count-card">
+      <div class="label">Personas en la sala</div>
+      <div class="count-line">
+        <span class="count" id="count">–</span>
+        <span class="capacity">/ <span id="capacity">–</span></span>
+      </div>
+      <div class="bar"><div id="bar"></div></div>
+      <div class="state" id="state">&nbsp;</div>
+      <div class="details">
+        <span id="status"><span class="dot"></span><span id="status-text">Conectando…</span> · Pico <span id="peak">–</span></span>
+        <span class="controls">Aforo <button id="less" title="Bajar aforo">−</button> <button id="more" title="Subir aforo">+</button></span>
+      </div>
+    </div>
+
+    <div class="card vision">
+      <div class="vision-head">
+        <div class="label"><span class="ai-name">La IA</span> Vision</div>
+        <button class="analyze" id="analyze">Analizar la sala</button>
+      </div>
+      <div class="description placeholder" id="description">YOLO cuenta; <span class="ai-name">la IA</span> entiende qué está pasando.</div>
+    </div>
+
+    <div class="card join" id="join" title="Ampliar el QR (tecla Q)">
+      <img src="/api/qr.svg" alt="Código QR para entrar desde el celular">
+      <div>
+        <strong>Únete desde tu celular</strong>
+        <div class="url" id="url"></div>
+        <div class="hint">Clic o tecla Q para ampliar</div>
+      </div>
+    </div>
+
+  </div>
+  <div class="card feed-card">
+      <div class="label">Lo que está pasando</div>
+      <ul class="feed" id="feed"><li class="empty" id="empty">Aquí aparecen los eventos, las decisiones por equipo y las preguntas del público.</li></ul>
+  </div>
+
+  <div class="qr-overlay" id="qr-overlay" hidden>
+    <div class="qr-big">
+      <h1>Escanea para unirte</h1>
+      <img src="/api/qr.svg" alt="Código QR para entrar desde el celular">
+      <div class="big-url" id="big-url"></div>
+      <div class="close">Clic, Esc o Q para cerrar</div>
+    </div>
+  </div>
+  <script>
+    const ROLES = { safety: "Seguridad", operations: "Operaciones", management: "Dirección" };
+    const STATES = { ok: "Dentro del aforo", near: "Casi lleno", full: "Aforo lleno", over: "Aforo rebasado" };
+    const $ = (id) => document.getElementById(id);
+    let capacity = null;
+    let ai = "La IA";
+    let lastFeedId = 0;
+
+    async function refresh() {
+      try {
+        const data = await (await fetch("/api/occupancy")).json();
+        capacity = data.capacity;
+        if (data.ai && data.ai !== ai) {
+          ai = data.ai;
+          document.querySelectorAll(".ai-name").forEach((el) => (el.textContent = ai));
+        }
+        render(data);
+      } catch {
+        $("status").classList.add("stopped");
+        $("status-text").textContent = "Servidor no disponible";
+      }
+    }
+
+    function render({ count, peak, capacity, running, status }) {
+      if ($("count").textContent !== String(count)) {
+        $("count").textContent = count;
+        $("count").classList.add("bump");
+        setTimeout(() => $("count").classList.remove("bump"), 150);
+      }
+      document.body.className = status;
+      $("capacity").textContent = capacity;
+      $("bar").style.width = Math.min(100, (100 * count) / capacity) + "%";
+      $("peak").textContent = peak;
+      $("state").textContent = STATES[status];
+      $("status").classList.toggle("stopped", !running);
+      $("status-text").textContent = running ? "En vivo" : "Cámara detenida";
+    }
+
+    async function changeCapacity(delta) {
+      if (capacity === null) return;
+      await fetch("/api/capacity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ capacity: Math.max(1, capacity + delta) }),
+      });
+      refresh();
+    }
+
+    function feedItem(item) {
+      const li = document.createElement("li");
+      li.className = item.kind + " new";
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const who = item.role ? ROLES[item.role] : "";
+      meta.textContent = {
+        event: `${item.time} · Evento`,
+        decision: `${item.time} · Decisión para ${who}`,
+        question: `${item.time} · Pregunta del público (${who})`,
+        error: `${item.time} · Aviso`,
+        analysis: `${item.time} · ${ai} Vision`,
+      }[item.kind];
+      li.append(meta);
+      if (item.question) {
+        const q = document.createElement("div");
+        q.className = "q";
+        q.textContent = `“${item.question}”`;
+        li.append(q);
+      }
+      const text = document.createElement("div");
+      text.textContent = item.text;
+      li.append(text);
+      return li;
+    }
+
+    async function refreshFeed() {
+      try {
+        const items = await (await fetch(`/api/feed?after=${lastFeedId}`)).json();
+        for (const item of items) {
+          $("empty")?.remove();
+          $("feed").prepend(feedItem(item));
+          lastFeedId = item.id;
+        }
+      } catch {}
+    }
+
+    async function analyze() {
+      $("analyze").disabled = true;
+      $("description").className = "description thinking";
+      $("description").textContent = `${ai} está mirando la sala`;
+      try {
+        const response = await fetch("/api/analyze", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "No se pudo analizar.");
+        // The description itself shows up once, big, in "Lo que está pasando".
+        $("description").className = "description placeholder";
+        $("description").textContent = "Listo: la descripción está en «Lo que está pasando».";
+        refreshFeed();
+      } catch (error) {
+        $("description").className = "description placeholder";
+        $("description").textContent = error.message || "No hay conexión con el servidor.";
+      } finally {
+        $("analyze").disabled = false;
+      }
+    }
+
+    $("analyze").onclick = analyze;
+    $("less").onclick = () => changeCapacity(-1);
+    $("more").onclick = () => changeCapacity(+1);
+    fetch("/api/public-url").then((r) => r.json()).then(({ url }) => {
+      $("url").textContent = url;
+      $("big-url").textContent = url.replace(/^https?:\/\//, "");
+    });
+
+    const toggleQr = (show) => ($("qr-overlay").hidden = !(show ?? $("qr-overlay").hidden));
+    $("join").onclick = () => toggleQr(true);
+    if (location.hash === "#qr") toggleQr(true);  // e.g. a bookmark that opens straight on the big QR
+    $("qr-overlay").onclick = () => toggleQr(false);
+    document.addEventListener("keydown", (event) => {
+      if (event.target.closest("input, textarea")) return;
+      if (event.key === "q" || event.key === "Q") toggleQr();
+      if (event.key === "Escape") toggleQr(false);
+    });
+    refresh().then(refreshFeed);  // first learn which AI is answering, so the list says its name
+    setInterval(refresh, 250);
+    setInterval(refreshFeed, 1000);
+  </script>
+</body>
+</html>
